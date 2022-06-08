@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DesignSurface">
+    <option name="filePathToZoomLevelMap">
+      <map>
+        <entry key="../../../../../layout/custom_preview.xml" value="0.22407407407407406" />
+        <entry key="../../../Library/Android/sdk/platforms/android-30/data/res/layout/simple_list_item_2.xml" value="0.23324275362318841" />
+        <entry key="app/src/main/res/drawable-v24/ic_launcher_foreground.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/arming_button.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/custom_thumb.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/empty_gallery.xml" value="0.11013513513513513" />
+        <entry key="app/src/main/res/drawable/ic_baseline_bluetooth_12.xml" value="0.15833333333333333" />
+        <entry key="app/src/main/res/drawable/ic_baseline_bluetooth_14.xml" value="0.15833333333333333" />
+        <entry key="app/src/main/res/drawable/ic_baseline_bluetooth_16.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/ic_baseline_bluetooth_20.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/ic_baseline_flash_off_24.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/ic_baseline_flash_on_20.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/ic_baseline_help_32.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/ic_baseline_image_not_supported_24.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/ic_baseline_image_not_supported_24_black.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/ic_baseline_pending_24.xml" value="0.10277777777777777" />
+        <entry key="app/src/main/res/drawable/ic_baseline_pending_darker_24.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/ic_baseline_settings_24.xml" value="0.15833333333333333" />
+        <entry key="app/src/main/res/drawable/ic_dashboard_black_24dp.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/ic_home_black_24dp.xml" value="0.2" />
+        <entry key="app/src/main/res/drawable/ic_launcher_background.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/ic_launcher_foreground2.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/ic_launcher_foregroundtest.xml" value="0.1837837837837838" />
+        <entry key="app/src/main/res/drawable/ic_notifications_black_24dp.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/listening_button.xml" value="0.13703703703703704" />
+        <entry key="app/src/main/res/drawable/other_curved_buttons.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/outline.xml" value="0.1837837837837838" />
+        <entry key="app/src/main/res/drawable/outline_flash_on_24.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/outline_flip_camera_android_24.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/drawable/pending_button.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/recording_button.xml" value="0.2" />
+        <entry key="app/src/main/res/drawable/ripple_button_curved.xml" value="0.2" />
+        <entry key="app/src/main/res/drawable/rounded_corners.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/splash_screen.xml" value="0.1" />
+        <entry key="app/src/main/res/drawable/state_button_selector.xml" value="0.1" />
+        <entry key="app/src/main/res/layout/activity_main.xml" value="0.1" />
+        <entry key="app/src/main/res/layout/card_layout.xml" value="0.335" />
+        <entry key="app/src/main/res/layout/custom_toolbar.xml" value="0.2078125" />
+        <entry key="app/src/main/res/layout/fragment_faq.xml" value="0.14993169398907105" />
+        <entry key="app/src/main/res/layout/fragment_help.xml" value="0.165" />
+        <entry key="app/src/main/res/layout/fragment_home.xml" value="0.11097877494673335" />
+        <entry key="app/src/main/res/layout/fragment_settings.xml" value="0.10233282358399341" />
+        <entry key="app/src/main/res/layout/fragment_troubleshooting.xml" value="0.1799863387978142" />
+        <entry key="app/src/main/res/layout/fragment_usage.xml" value="0.2289156626506024" />
+        <entry key="app/src/main/res/layout/listview_custom_item_view.xml" value="0.13728470111448834" />
+        <entry key="app/src/main/res/menu/toolbar_menu.xml" value="0.2078125" />
+        <entry key="app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" value="0.19163879598662206" />
+        <entry key="app/src/main/res/mipmap-anydpi-v26/logo.xml" value="0.1" />
+        <entry key="app/src/main/res/mipmap-anydpi-v26/logo_round.xml" value="0.1" />
+      </map>
+    </option>
+  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_11" default="true" project-jdk-name="11" project-jdk-type="JavaSDK">
+    <output url="file://$PROJECT_DIR$/build/classes" />
+  </component>
+  <component name="ProjectType">
+    <option name="id" value="Android" />
+  </component>
+  <component name="VisualizationToolProject">
+    <option name="state">
+      <ProjectState>
+        <option name="scale" value="0.1" />
+      </ProjectState>
+    </option>
+  </component>
+</project>

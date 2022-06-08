@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        app:state_normal="true"
+        app:state_listening="false"
+        android:drawable="@drawable/arming_button" />
+    <item
+        app:state_normal="false"
+        app:state_listening="true"
+        android:drawable="@drawable/listening_button" />
+</selector>

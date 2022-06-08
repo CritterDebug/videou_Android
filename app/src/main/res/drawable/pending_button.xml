@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <layer-list>
+            <item
+                android:drawable="@drawable/ic_baseline_pending_darker_24"
+                android:width="48dp"
+                android:height="48dp"
+                android:tint="@android:color/darker_gray"
+                android:gravity="center" >
+            </item>
+            <item>
+                <shape android:shape="oval">
+                    <stroke android:width="3dp"
+                        android:color="@android:color/darker_gray" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+
+    <item android:state_pressed="false">
+        <layer-list android:layout_height="wrap_content">
+            <item android:width="48dp" android:height="48dp" android:color="@android:color/background_dark" android:drawable="@drawable/ic_baseline_pending_24" android:gravity="center"></item>
+            <item>
+                <shape android:shape="oval">
+                    <stroke android:width="3dp" android:color="@android:color/white" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- repeat state -->
+    <attr name="repeat_state">
+        <enum name="off" value="0" />
+        <enum name="one" value="1" />
+        <enum name="all" value="2" />
+    </attr>
+
+    <!-- custom repeat button -->
+    <declare-styleable name="RepeatButton">
+        <attr name="repeat_state" />
+        <attr name="src_repeat_off" format="integer" />
+        <attr name="src_repeat_one" format="integer" />
+        <attr name="src_repeat_all" format="integer" />
+    </declare-styleable>
+
+    <declare-styleable name="customStates">
+        <attr name="state_normal" format="boolean"/>
+        <attr name="state_listening" format="boolean"/>
+        <attr name="state_listening_recording" format="boolean"/>
+    </declare-styleable>
+</resources>
