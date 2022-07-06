@@ -1,6 +1,6 @@
 # videouAndroid
 
-Should be able to be run without any issues. You will however need to have a real device not plugged in to use the app. An emulator will run the app but from memory emulators don't have bluetooth privilege so most of the functionality will be lost.
+Should be able to be run without any issues as long as the device is android 8.0 or newer. It was mostly tested on android 12 so I know that is stable. You will however need to have a real device plugged in to use the app. An emulator will run the app but I think emulators don't have bluetooth privilege, so most of the functionality will be lost.
 
 Currently the fragment_home.xml page wont display the UI. To fix this comment the uncomment the following lines. I believe it has something to do with the stability of camerax library even though its the first release candidate. The previous version I was using did not have this problem.
 
