@@ -38,15 +38,15 @@
         <entry key="app/src/main/res/drawable/rounded_corners.xml" value="0.1" />
         <entry key="app/src/main/res/drawable/splash_screen.xml" value="0.1" />
         <entry key="app/src/main/res/drawable/state_button_selector.xml" value="0.1" />
-        <entry key="app/src/main/res/layout/activity_main.xml" value="0.1" />
+        <entry key="app/src/main/res/layout/activity_main.xml" value="0.165" />
         <entry key="app/src/main/res/layout/card_layout.xml" value="0.335" />
         <entry key="app/src/main/res/layout/custom_toolbar.xml" value="0.2078125" />
         <entry key="app/src/main/res/layout/fragment_faq.xml" value="0.14993169398907105" />
         <entry key="app/src/main/res/layout/fragment_help.xml" value="0.165" />
-        <entry key="app/src/main/res/layout/fragment_home.xml" value="0.11097877494673335" />
+        <entry key="app/src/main/res/layout/fragment_home.xml" value="0.125" />
         <entry key="app/src/main/res/layout/fragment_settings.xml" value="0.10233282358399341" />
         <entry key="app/src/main/res/layout/fragment_troubleshooting.xml" value="0.1799863387978142" />
-        <entry key="app/src/main/res/layout/fragment_usage.xml" value="0.2289156626506024" />
+        <entry key="app/src/main/res/layout/fragment_usage.xml" value="0.10027661116146994" />
         <entry key="app/src/main/res/layout/listview_custom_item_view.xml" value="0.13728470111448834" />
         <entry key="app/src/main/res/menu/toolbar_menu.xml" value="0.2078125" />
         <entry key="app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" value="0.19163879598662206" />
@@ -64,7 +64,7 @@
   <component name="VisualizationToolProject">
     <option name="state">
       <ProjectState>
-        <option name="scale" value="0.1" />
+        <option name="scale" value="0.11" />
       </ProjectState>
     </option>
   </component>

@@ -120,23 +120,6 @@
                 tools:layout_editor_absoluteX="0dp" />
 
             <Switch
-                android:id="@+id/location"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_centerHorizontal="true"
-                android:checked="false"
-                android:minHeight="?android:attr/listPreferredItemHeightSmall"
-                android:paddingStart="?android:attr/listPreferredItemPaddingStart"
-                android:paddingLeft="16dp"
-                android:paddingEnd="?android:attr/listPreferredItemPaddingEnd"
-                android:paddingRight="16dp"
-                android:text="Location"
-                android:textAppearance="?attr/textAppearanceListItem"
-                app:layout_constraintTop_toBottomOf="@+id/gridlines"
-                tools:ignore="UseSwitchCompatOrMaterialXml"
-                tools:layout_editor_absoluteX="1dp" />
-
-            <Switch
                 android:id="@+id/gridlines"
                 android:layout_width="fill_parent"
                 android:layout_height="wrap_content"
@@ -181,7 +164,7 @@
                 android:textSize="14sp"
                 android:textStyle="bold"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/location" />
+                app:layout_constraintTop_toBottomOf="@+id/gridlines" />
 
             <View
                 android:id="@+id/experimentalDivider"
@@ -191,7 +174,7 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintHorizontal_bias="0.0"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/location" />
+                app:layout_constraintTop_toBottomOf="@+id/gridlines" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 

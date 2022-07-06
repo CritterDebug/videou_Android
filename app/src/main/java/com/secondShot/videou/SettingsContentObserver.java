@@ -8,9 +8,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
 
-import java.util.Timer;
-import java.util.TimerTask;
-
 
 public class SettingsContentObserver extends ContentObserver {
     private int originalVolume;
@@ -22,7 +19,6 @@ public class SettingsContentObserver extends ContentObserver {
     private boolean startEnabled;
     private boolean musicPrevActive;
     private boolean musicInitActive;
-    private Timer timer;
 
     private enum ButtonType {
         NOT_ENABLED(0), PLAY_PAUSE(1), VOLUME_UP(2), VOLUME_DOWN(3);
@@ -48,10 +44,11 @@ public class SettingsContentObserver extends ContentObserver {
         originalVolume = volume;
         musicPrevActive = audioManager.isMusicActive();
         musicInitActive = audioManager.isMusicActive();
-        timer = new Timer();
-        if (this.startBtn == ButtonType.PLAY_PAUSE || this.stopBtn == ButtonType.PLAY_PAUSE) {
+
+        if ((this.startBtn == ButtonType.PLAY_PAUSE || this.stopBtn == ButtonType.PLAY_PAUSE) && this.startEnabled) {
             createTimer();
         }
+
     }
 
     public void createTimer() {
@@ -82,105 +79,108 @@ public class SettingsContentObserver extends ContentObserver {
                 break;
         }
 
-        // We can safely assume speech recognition handled for start
+        // TODO speech recognition fails - needs to restart and update text view
+        // Use case 1. Music is off, recognition, and stops with play button
+        // Use case 2. Music is off, recognition, and stops with volume button
+        // Use case 3. Music is on, recognition, and stops with play button
+        // Use case 4. Music is on, recognition, and stops with either volume button - TAKEN CARE OF
+        // Use case 5. Music is on, start with pause, and stops with either volume button
+        // Use case 6. Music is on, start with pause, and stops with pause button
+        // Use case 7. Music is off, start with pause, and stops with volume button
+        // Use case 8. Music is off, start with pause, and stops with pause button
+
+        Handler newHandler = new Handler(Looper.getMainLooper());
+
+        // We safely assume speech recognition handled for start
         if (startBtn == ButtonType.NOT_ENABLED) {
-            timer.scheduleAtFixedRate(new TimerTask() {
+            Runnable runnable = new Runnable() {
+                Boolean counter = false;
                 @Override
                 public void run() {
-                    if (musicInitActive && start && musicInitActive != musicPrevActive) {
-                        new Handler(Looper.getMainLooper()).post(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (stopBtn == ButtonType.PLAY_PAUSE) {
-                                    stop = true;
-                                    startStopObject.processStop();
-                                }
+                    if (start) {
+                        // for handling with music originally active
+                        if (musicInitActive && !musicPrevActive) {
+                            if (stopBtn == ButtonType.PLAY_PAUSE) {
+                                stop = true;
+                                startStopObject.processStop();
+                                newHandler.removeCallbacks(this);
+                                return;
                             }
-                        });
-                    } else if (!musicInitActive && start && musicInitActive == musicPrevActive) {
-                        System.out.println("YOOOOOOO");
+                        // for handling with music not originally active
+                        } else if (!musicInitActive && !musicPrevActive && !counter) {
+                            if (stopBtn == ButtonType.PLAY_PAUSE) {
+                                audioManager.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
+                                counter = true;
+                            }
+                        // for handling with music not originally active 2nd part
+                        } else if (!musicInitActive && !musicPrevActive && counter){
+                            stop = true;
+                            startStopObject.processStop();
+                            audioManager.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE));
+                            newHandler.removeCallbacks(this);
+                            return;
+                        }
+                        musicPrevActive = audioManager.isMusicActive();
+                        newHandler.postDelayed(this, 250);
                     }
-                    musicPrevActive = audioManager.isMusicActive();
-
-//                    if (audioManager.isMusicActive() == musicPrevActive) {
-//                                musicPrevActive = audioManager.isMusicActive();
-//                                if (!musicInitActive && musicPrevActive == musicInitActive) {
-//                                    System.out.println("MAGICALLY CALLED Here");
-//                                } else if (musicInitActive && musicPrevActive == musicInitActive) {
-//                                    if (stopBtn == ButtonType.PLAY_PAUSE) {
-//                                        stop = true;
-//                                        startStopObject.processStop();
-//                                    }
-//                                } else {
-//                                    if (stopBtn == ButtonType.PLAY_PAUSE) {
-//                                        stop = true;
-//                                        startStopObject.processStop();
-//                                    }
-//                                }
-//                            }
-//                        });
-//                    }
-
                 }
-            }, timerLagInt, 250);
+            };
+            newHandler.postDelayed(runnable, timerLagInt);
         } else {
-            // code is good from here
-            timer.scheduleAtFixedRate(new TimerTask() {
+            // used for case with start button as play/pause and or stop button being play/pause when not used with speech recognition
+            int finalTimerLagInt = timerLagInt;
+            Runnable runnable = new Runnable() {
                 boolean firstTime = false;
                 @Override
                 public void run() {
                     if (audioManager.isMusicActive() != musicPrevActive) {
-                        new Handler(Looper.getMainLooper()).post(new Runnable() {
-                            @Override
-                            public void run() {
-                                // used for start and stop with music active at start
-                                if (startEnabled && musicInitActive && !firstTime) {
-                                    firstTime = true;
-                                    KeyEvent event = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY);
-                                    audioManager.dispatchMediaKeyEvent(event);
+                        if (startEnabled && musicInitActive && !firstTime && !start) {
+                            firstTime = true;
+                            audioManager.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
+                            start = true;
+                            startStopObject.processStart();
+                            if (stopBtn == ButtonType.PLAY_PAUSE && !stop) {
+                                newHandler.postDelayed(this, finalTimerLagInt + 250);
+                            } else {
+                                newHandler.removeCallbacks(this);
+                            }
+                            return;
+                        }
+                        musicPrevActive = audioManager.isMusicActive();
+                        if (startEnabled) {
+                            if (start && !stop) {
+                                if (stopBtn == ButtonType.PLAY_PAUSE) {
+                                    stop = true;
+                                    startStopObject.processStop();
+                                    newHandler.removeCallbacks(this);
+                                }
+                            } else if (!start) {
+                                if (startBtn == ButtonType.PLAY_PAUSE) {
                                     start = true;
                                     startStopObject.processStart();
-                                    return;
                                 }
-                                // keep it there -- DONT KNOW WHY
-                                musicPrevActive = audioManager.isMusicActive();
-                                // ------ //
-                                if (!startEnabled) {
-                                    if (!musicInitActive && musicPrevActive == musicInitActive) {
-
-                                    } else if (musicInitActive && musicPrevActive == musicInitActive) {
-                                        if (stopBtn == ButtonType.PLAY_PAUSE) {
-                                            stop = true;
-                                            startStopObject.processStop();
-                                        }
-                                    } else {
-                                        if (stopBtn == ButtonType.PLAY_PAUSE) {
-                                            stop = true;
-                                            startStopObject.processStop();
-                                        }
-                                    }
+                                if (stopBtn != ButtonType.PLAY_PAUSE) {
+                                    newHandler.removeCallbacks(this);
                                 } else {
-                                    if (start) {
-                                        if (stopBtn == ButtonType.PLAY_PAUSE) {
-                                            stop = true;
-                                            startStopObject.processStop();
-                                        }
-                                    } else {
-                                        if (startBtn == ButtonType.PLAY_PAUSE) {
-                                            start = true;
-                                            startStopObject.processStart();
-                                        }
-                                    }
+                                    newHandler.postDelayed(this, finalTimerLagInt + 250);
                                 }
                             }
-                        });
+                        }
+                    } else {
+                        newHandler.postDelayed(this, 250);
                     }
                 }
-            }, 0, 250);
+            };
+            newHandler.postDelayed(runnable, 0);
         }
     }
 
     public void setStart(boolean startPref) {
+        // only used for creating timer with speech recognition as start and play/pause as stop
+        // doing this to prevent multiple calls
+        if (this.stopBtn == ButtonType.PLAY_PAUSE && !startEnabled) {
+            createTimer();
+        }
         this.start = startPref;
     }
 
@@ -242,11 +242,6 @@ public class SettingsContentObserver extends ContentObserver {
 
         originalVolume = currentVolume;
 
-    }
-
-    public void remove(){
-        timer.purge();
-        timer.cancel();
     }
 
 }

@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
@@ -23,17 +24,25 @@ import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.SimpleAdapter;
 import android.widget.Switch;
+import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.Camera;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.VideoCapture;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.NavController;
 
+import com.google.common.util.concurrent.ListenableFuture;
 import com.secondShot.videou.MainActivity;
 import com.secondShot.videou.R;
 import com.secondShot.videou.databinding.FragmentSettingsBinding;
@@ -46,9 +55,11 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ExecutionException;
 
 public class SettingsFragment extends Fragment {
 
@@ -56,10 +67,8 @@ public class SettingsFragment extends Fragment {
     private FragmentSettingsBinding binding;
     private View root;
 
-    private Switch btMusicListening;
     private Switch lblSpeechRecognition;
     private Switch switchGridLines;
-    private Switch switchLocation;
     private Switch reArm;
     private Switch startBtnEnabled;
 
@@ -76,18 +85,12 @@ public class SettingsFragment extends Fragment {
     private final String STORAGE_PERMISSION = "android.permission.WRITE_EXTERNAL_STORAGE";
     private final int STORAGE_CODE_PERMISSION = 102;
 
-    private final String USERS_LOCATION_PERMISSION = "android.permission.ACCESS_FINE_LOCATION";
-    private final int LOCATION_CODE_PERMISSION = 102;
-    private final String USERS_LOCATION = "usersLocationEnabled";
-
     private final String PREFERENCE_FILE_NAME = "preferenceList";
-    private final String CAMERA_ASPECT_RATIO = "cameraAspectRatio";
-    private final String CAMERA_ASPECT_LIST = "cameraAspectList";
+    private final String CAMERA_RESOLUTION = "cameraResolution";
+    private final String CAMERA_RESOLUTION_LIST = "cameraResolutionList";
     private final String FILE_LOCATION = "fileLocation";
     private final String START_RECORDING = "startRecording";
     private final String GRIDLINES = "gridLines";
-    private final String LONGITUDE = "longitude";
-    private final String LATITUDE = "latitude";
     private final String LBL_SPEECH_RECOGNITION = "lblSpeechRecognition";
     private final String TIMER = "timer";
     private final String RE_ARM = "reArm";
@@ -128,9 +131,28 @@ public class SettingsFragment extends Fragment {
                 }
             }
         };
+
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), callback);
 
         return root;
+    }
+
+    public List<Quality> getCameraResolution() {
+        ProcessCameraProvider cameraProvider = null;
+        VideoCapture videoCapture = new VideoCapture.Builder().build();
+        Camera camera = null;
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(getContext());
+        try {
+            cameraProvider.unbindAll();
+        } catch (NullPointerException npe ) { }
+        try {
+            cameraProvider = cameraProviderFuture.get();
+        } catch (ExecutionException | InterruptedException e) { }
+        try {
+            cameraProvider.unbindAll();
+            camera = cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, videoCapture);
+        } catch (Exception exception) { }
+        return QualitySelector.getSupportedQualities(camera.getCameraInfo());
     }
 
     private boolean checkStoragePermission() {
@@ -159,29 +181,46 @@ public class SettingsFragment extends Fragment {
         if (!sharedPreferences.contains(FILE_LOCATION_GRANTED) ) {
             editor.putBoolean(FILE_LOCATION_GRANTED, false);
         }
-        if (!sharedPreferences.contains(USERS_LOCATION)) {
-            editor.putBoolean(USERS_LOCATION, false);
+        if (!sharedPreferences.contains(CAMERA_RESOLUTION) ) {
+            String quality;
+            try {
+                quality = getCameraResolution().get(0).toString();
+                if (quality.contains("name=UHD")) {
+                    quality = "UHD 2160p";
+                } else if (quality.contains("name=FHD")) {
+                    quality = "FHD 1080p";
+                } else if (quality.contains("name=HD")) {
+                    quality = "HD 720p";
+                } else if (quality.contains("name=SD")) {
+                    quality = "SD 480p";
+                }
+            } catch (NullPointerException npe) {
+                quality = "NONE";
+            }
+            editor.putString(CAMERA_RESOLUTION, quality);
         }
-        if (!sharedPreferences.contains(CAMERA_ASPECT_RATIO) ) {
-            editor.putString(CAMERA_ASPECT_RATIO, "4:3");
-        }
-        if (!sharedPreferences.contains(CAMERA_ASPECT_LIST) ) {
-            Set<String> aspectRatiosList = new HashSet<>();
-            aspectRatiosList.add("4:3");
-            aspectRatiosList.add("16:9");
-            editor.putStringSet(CAMERA_ASPECT_LIST, aspectRatiosList);
+        if (!sharedPreferences.contains(CAMERA_RESOLUTION_LIST) ) {
+            Set<String> cameraResolutionList = new HashSet<>();
+            for ( Quality quality : getCameraResolution() ) {
+                String result = null;
+                if (quality.toString().contains("name=UHD")) {
+                    result = "UHD 2160p";
+                } else if (quality.toString().contains("name=FHD")) {
+                    result = "FHD 1080p";
+                } else if (quality.toString().contains("name=HD")) {
+                    result = "HD 720p";
+                } else if (quality.toString().contains("name=SD")) {
+                    result = "SD 480p";
+                }
+                cameraResolutionList.add(result);
+            }
+            editor.putStringSet(CAMERA_RESOLUTION_LIST, cameraResolutionList);
         }
         if (!sharedPreferences.contains(START_RECORDING) ) {
             editor.putString(START_RECORDING, "start");
         }
         if (!sharedPreferences.contains(GRIDLINES) ) {
             editor.putBoolean(GRIDLINES, false);
-        }
-        if (!sharedPreferences.contains(LATITUDE) ) {
-            editor.putString(LATITUDE, "0");
-        }
-        if (!sharedPreferences.contains(LONGITUDE) ) {
-            editor.putString(LONGITUDE, "0");
         }
         if (!sharedPreferences.contains(PERMISSION_GRANTED) ) {
             if ( allPermissionsGranted() ) {
@@ -200,10 +239,10 @@ public class SettingsFragment extends Fragment {
             editor.putBoolean(START_BTN_PREF, true);
         }
         if (!sharedPreferences.contains(START_BTN) ) {
-            editor.putString(START_BTN, "volume down");
+            editor.putString(START_BTN, "volume up");
         }
         if (!sharedPreferences.contains(SAVE_BTN) ) {
-            editor.putString(SAVE_BTN, "pause");
+            editor.putString(SAVE_BTN, "volume down");
         }
         if (!sharedPreferences.contains(RE_ARM) ) {
             editor.putBoolean(RE_ARM, false);
@@ -214,15 +253,6 @@ public class SettingsFragment extends Fragment {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(PREFERENCE_FILE_NAME, Context.MODE_PRIVATE);
-        if ( requestCode == LOCATION_CODE_PERMISSION) {
-            if ( grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED ) {
-                sharedPreferences.edit().putBoolean(USERS_LOCATION, true).apply();
-            } else if ( grantResults[0] == PackageManager.PERMISSION_DENIED ) {
-                sharedPreferences.edit().putBoolean(USERS_LOCATION, false).apply();
-            }
-            switchLocation.setChecked(getBoolPreference(USERS_LOCATION));
-        }
     }
 
     public void createDropDowns() {
@@ -313,7 +343,7 @@ public class SettingsFragment extends Fragment {
                                 } else {
                                     AlertDialog.Builder alertDialog = new AlertDialog.Builder(getContext());
                                     alertDialog.setTitle("Recommendation");
-                                    alertDialog.setMessage("If using music for 's recommended that you use volume up for start and volume down for save");
+                                    alertDialog.setMessage("If wanting music fully uninterrupted, it's recommended that you use volume up for start and volume down for save");
                                     alertDialog.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
                                         @Override
                                         public void onClick(DialogInterface dialog, int which) {
@@ -349,15 +379,13 @@ public class SettingsFragment extends Fragment {
         hashMapItem.put("line2", getPreference(TIMER));
         generalList.add(hashMapItem);
         hashMapItem = new HashMap<String, String>();
-        hashMapItem.put("line1", "Camera Size");
-        hashMapItem.put("line2", getPreference(CAMERA_ASPECT_RATIO));
+        hashMapItem.put("line1", "Camera Resolution");
+        hashMapItem.put("line2", getPreference(CAMERA_RESOLUTION));
         generalList.add(hashMapItem);
         hashMapItem = new HashMap<String, String>();
         hashMapItem.put("line1", "Storage Location");
         hashMapItem.put("line2", getPreference(FILE_LOCATION));
         generalList.add(hashMapItem);
-
-        ArrayList<String> cameraQualityList = getPreferenceList(CAMERA_ASPECT_LIST);
 
         SimpleAdapter generalListAdapter = new SimpleAdapter( getActivity(), generalList, android.R.layout.simple_list_item_2,
                 new String[] { "line1", "line2" }, new int[] { android.R.id.text1, android.R.id.text2 } );
@@ -395,15 +423,25 @@ public class SettingsFragment extends Fragment {
                         break;
                     case 1:
                         PopupMenu popupMenu1 = new PopupMenu( SettingsFragment.super.getContext(), view);
-                        for ( String string : cameraQualityList ) {
-                            popupMenu1.getMenu().add(string);
+                        for ( Quality string : getCameraResolution() ) {
+                            String result = null;
+                            if (string.toString().contains("name=UHD")) {
+                                result = "UHD 2160p";
+                            } else if (string.toString().contains("name=FHD")) {
+                                result = "FHD 1080p";
+                            } else if (string.toString().contains("name=HD")) {
+                                result = "HD 720p";
+                            } else if (string.toString().contains("name=SD")) {
+                                result = "SD 480p";
+                            }
+                            popupMenu1.getMenu().add(result);
                         }
                         popupMenu1.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
                             public boolean onMenuItemClick(MenuItem item) {
-                                updatePreference(CAMERA_ASPECT_RATIO, item.toString());
+                                updatePreference(CAMERA_RESOLUTION, item.toString());
                                 generalList.remove(1);
                                 HashMap<String, String> hashMapItem = new HashMap<String, String>();
-                                hashMapItem.put("line1", "Camera Size");
+                                hashMapItem.put("line1", "Camera Resolution");
                                 hashMapItem.put("line2", item.toString());
                                 generalList.add(1, hashMapItem);
                                 generalListAdapter.notifyDataSetChanged();
@@ -422,7 +460,7 @@ public class SettingsFragment extends Fragment {
                                     @Override
                                     public void onClick(DialogInterface dialog, int which) {
                                         dialog.cancel();
-                                        Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
                                         intent.setData(Uri.parse("package:" + getActivity().getPackageName()));
                                         startActivity(intent);
                                     }
@@ -488,7 +526,7 @@ public class SettingsFragment extends Fragment {
                     case 0:
                         AlertDialog.Builder startAlertDialogBuilder = new AlertDialog.Builder(getContext());
                         startAlertDialogBuilder.setTitle("Start Recording Word");
-                        startAlertDialogBuilder.setMessage("Please enter the word / short phrase you want to say to start recording");
+                        startAlertDialogBuilder.setMessage("Please enter the word/s (less than 5 words) you want to say to start recording");
                         LinearLayout startAlertDialogLayout = new LinearLayout(SettingsFragment.super.getContext());
                         startAlertDialogLayout.setOrientation(LinearLayout.VERTICAL);
                         LinearLayout.LayoutParams startAlertDialogLayoutParams = new LinearLayout.LayoutParams(
@@ -569,34 +607,7 @@ public class SettingsFragment extends Fragment {
         switchGridLines.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if ( isChecked ) {
-                    updateBoolPreference(GRIDLINES, true);
-                } else {
-                    updateBoolPreference(GRIDLINES, false);
-                }
-            }
-        });
-
-        switchLocation = root.findViewById(R.id.location);
-        if (ContextCompat.checkSelfPermission(getContext(), USERS_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
-            switchLocation.setChecked(getBoolPreference(USERS_LOCATION));
-        } else {
-            switchLocation.setChecked(false);
-        }
-        switchLocation.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if ( isChecked ) {
-                    if (ContextCompat.checkSelfPermission(getContext(), USERS_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
-                        updateBoolPreference(USERS_LOCATION, true);
-                    } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            requestPermissions( new String[] {USERS_LOCATION_PERMISSION}, LOCATION_CODE_PERMISSION);
-                        }
-                    }
-                } else {
-                    updateBoolPreference(USERS_LOCATION, false);
-                }
+                updateBoolPreference(GRIDLINES, isChecked);
             }
         });
 
@@ -605,11 +616,7 @@ public class SettingsFragment extends Fragment {
         lblSpeechRecognition.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if ( isChecked ) {
-                    updateBoolPreference(LBL_SPEECH_RECOGNITION, true);
-                } else {
-                    updateBoolPreference(LBL_SPEECH_RECOGNITION, false);
-                }
+                updateBoolPreference(LBL_SPEECH_RECOGNITION, isChecked);
             }
         });
 
@@ -618,11 +625,7 @@ public class SettingsFragment extends Fragment {
         startBtnEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if ( isChecked ) {
-                    updateBoolPreference(START_BTN_PREF, true);
-                } else {
-                    updateBoolPreference(START_BTN_PREF, false);
-                }
+                updateBoolPreference(START_BTN_PREF, isChecked);
             }
         });
 
@@ -631,10 +634,18 @@ public class SettingsFragment extends Fragment {
         reArm.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if ( isChecked ) {
-                    updateBoolPreference(RE_ARM, true);
-                } else {
-                    updateBoolPreference(RE_ARM, false);
+                updateBoolPreference(RE_ARM, isChecked);
+                if (isChecked) {
+                    AlertDialog.Builder alertDialog = new AlertDialog.Builder(getContext());
+                    alertDialog.setTitle("Still experimental");
+                    alertDialog.setMessage("Useful for making multiple recordings without having to go back to your phone each time to restart the arming process. Can be problematic but is still useful");
+                    alertDialog.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.cancel();
+                        }
+                    });
+                    alertDialog.show();
                 }
             }
         });
