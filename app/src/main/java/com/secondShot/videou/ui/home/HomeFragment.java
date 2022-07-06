@@ -18,11 +18,7 @@ import android.graphics.Bitmap;
 import android.graphics.Point;
 import android.graphics.drawable.Drawable;
 import android.hardware.camera2.CameraAccessException;
-import android.location.Address;
-import android.location.Geocoder;
-import android.location.Location;
 import android.media.AudioManager;
-import android.media.MediaRecorder;
 import android.media.ThumbnailUtils;
 import android.net.Uri;
 import android.os.Build;
@@ -33,6 +29,9 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.util.Log;
+import android.util.Rational;
+import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
@@ -50,40 +49,48 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.OnBackPressedCallback;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
-import androidx.appcompat.app.AlertDialog;
+import androidx.camera.camera2.Camera2Config;
 import androidx.camera.core.AspectRatio;
+import androidx.camera.core.Camera;
 import androidx.camera.core.CameraControl;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.CameraXConfig;
 import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.FocusMeteringResult;
 import androidx.camera.core.MeteringPoint;
 import androidx.camera.core.MeteringPointFactory;
-
-import androidx.camera.core.CameraSelector;
-import androidx.camera.core.Camera;
-import androidx.camera.core.ImageAnalysis;
-import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
-import androidx.camera.core.VideoCapture;
-
+import androidx.camera.core.UseCaseGroup;
+import androidx.camera.core.ViewPort;
 import androidx.camera.core.impl.utils.executor.CameraXExecutors;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
+import androidx.camera.video.FallbackStrategy;
+import androidx.camera.video.PendingRecording;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
+import androidx.camera.video.Recorder;
+import androidx.camera.video.Recording;
+import androidx.camera.video.VideoCapture;
+import androidx.camera.video.VideoRecordEvent;
+import androidx.camera.video.FileOutputOptions;
 
+import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AlertDialog;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.ShareCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.core.content.PermissionChecker;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.core.graphics.drawable.RoundedBitmapDrawable;
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory;
+import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.lifecycle.ViewModelStoreOwner;
-import androidx.fragment.app.Fragment;
 import androidx.navigation.NavController;
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 
@@ -93,15 +100,11 @@ import com.secondShot.videou.SettingsContentObserver;
 import com.secondShot.videou.StartStopObject;
 import com.secondShot.videou.databinding.FragmentHomeBinding;
 
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.common.util.concurrent.ListenableFuture;
-
-import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -113,11 +116,12 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import org.apache.commons.codec.language.DoubleMetaphone;
 
 
-public class HomeFragment extends Fragment {
+public class HomeFragment extends Fragment implements CameraXConfig.Provider, TextToSpeech.OnInitListener {
 
     private HomeViewModel homeViewModel;
     private FragmentHomeBinding binding;
@@ -135,7 +139,6 @@ public class HomeFragment extends Fragment {
     private GridOutline gridOutline;
     private Uri videoURI;
 
-    private Timer recordingTextViewTimer;
     private Timer removeCircleTimer;
     private Timer zoomTimer;
     private Timer exposureTimer;
@@ -145,23 +148,21 @@ public class HomeFragment extends Fragment {
     private int timerPreferenceInt;
     private TextView hudTimer;
 
-    private FusedLocationProviderClient fusedLocationClient;
-    private VideoCapture.Metadata metadata;
-
-    private ImageAnalysis imageAnalysis;
-    private VideoCapture videoCapture;
+    private Recording recording;
+    private PendingRecording pendingRecording;
+    private VideoCapture<Recorder> videoCapture;
     private PreviewView previewView;
     private Preview preview;
-    private TextView lblRecognisedText;
     private ListenableFuture<ProcessCameraProvider> cameraProviderFuture;
-    private CameraSelector cameraSelector;
     private ProcessCameraProvider cameraProvider;
+    private CameraSelector cameraSelector;
     private Camera camera;
     private CameraControl cameraControl;
-    private Executor mExecutorService;
+    private ViewPort viewPort;
 
     private SpeechRecognizer speech = null;
     private Intent recognizerIntent;
+    private TextView lblRecognisedText;
 
     private BroadcastReceiver btOnOffReceiver;
     private BroadcastReceiver broadcastReceiver;
@@ -193,10 +194,7 @@ public class HomeFragment extends Fragment {
     private final String FILE_LOCATION = "fileLocation";
     private final String START_RECORDING = "startRecording";
     private final String GRIDLINES = "gridLines";
-    private final String USERS_LOCATION = "usersLocationEnabled";
-    private final String LONGITUDE = "longitude";
-    private final String LATITUDE = "latitude";
-    private final String CAMERA_ASPECT_RATIO = "cameraAspectRatio";
+    private final String CAMERA_RESOLUTION = "cameraResolution";
     private final String LBL_SPEECH_RECOGNITION = "lblSpeechRecognition";
     private final String TIMER = "timer";
     private final String START_BTN_PREF = "startBtnPref";
@@ -206,6 +204,10 @@ public class HomeFragment extends Fragment {
 
     private SettingsContentObserver settingsContentObserver;
     private StartStopObject startStopObject;
+
+    private Handler recordingTextViewHandler;
+    private Runnable recordingTextViewRunnable;
+    private Runnable runnable;
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -224,32 +226,14 @@ public class HomeFragment extends Fragment {
                 ActivityCompat.requestPermissions(getActivity(), new String[]{STORAGE_PERMISSION}, STORAGE_CODE_PERMISSION);
             }
         });
-
-        textToSpeech = new TextToSpeech(getActivity().getApplicationContext(), new TextToSpeech.OnInitListener() {
-            @Override
-            public void onInit(int status) {
-                if (status != TextToSpeech.ERROR) {
-                    textToSpeech.setLanguage(Locale.getDefault());
-                }
-            }
-        });
-
+        textToSpeech = new TextToSpeech(getContext(), this);
         OnBackPressedCallback callback = new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 getActivity().finish();
             }
         };
-
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), callback);
-
-        if (allPermissionsGranted()) {
-            init();
-        } else {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                ActivityCompat.requestPermissions(getActivity(), REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
-            }
-        }
 
         return root;
 
@@ -279,25 +263,14 @@ public class HomeFragment extends Fragment {
         return true;
     }
 
-    public boolean setupLocation() {
-        boolean location = sharedPreferences.getBoolean(USERS_LOCATION, false);
-        if ( location ) {
-            if (getActivity().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                && getActivity().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     public File getGalleryDrawable() {
         File newFile = null;
         File file = new File(sharedPreferences.getString(FILE_LOCATION, new String()));
-        if ( file.getAbsolutePath().equals("/") ) {
+        if (file.getAbsolutePath().equals("/")) {
             return newFile;
         }
         File[] fileList = file.getAbsoluteFile().listFiles();
-        if ( fileList != null ) {
+        if (fileList != null) {
             Arrays.sort(fileList, new Comparator<File>() {
                 public int compare(File f1, File f2) {
                     return Long.valueOf(f1.lastModified()).compareTo(f2.lastModified());
@@ -314,7 +287,7 @@ public class HomeFragment extends Fragment {
 
     public void updateGalleryDrawable() {
         File file = getGalleryDrawable();
-        if ( getGalleryDrawable() != null ) {
+        if (getGalleryDrawable() != null) {
             Bitmap bitmap = ThumbnailUtils.createVideoThumbnail(file.getAbsolutePath(), MediaStore.Video.Thumbnails.FULL_SCREEN_KIND);
             int width = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 52, getContext().getResources().getDisplayMetrics());
             int height = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 52, getContext().getResources().getDisplayMetrics());
@@ -342,8 +315,6 @@ public class HomeFragment extends Fragment {
         lblSpeechRecognitionOnOff = getBoolPreference(LBL_SPEECH_RECOGNITION);
         hudTimer = root.findViewById(R.id.hudTimerLbl);
 
-        createSharedPreferenceList();
-
         cameraSelector = new CameraSelector.Builder()
                 .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                 .build();
@@ -362,31 +333,34 @@ public class HomeFragment extends Fragment {
         startBluetoothChecks();
 
         btnGallery = root.findViewById(R.id.btnGallery);
-        if ( getGalleryDrawable() != null ) {
+        if (getGalleryDrawable() != null) {
             videoURI = FileProvider.getUriForFile(getContext(), getContext().getPackageName(), getGalleryDrawable());
         } else {
             videoURI = null;
         }
 
         File file = getGalleryDrawable();
-        if ( getGalleryDrawable() != null ) {
-            Bitmap bitmap = ThumbnailUtils.createVideoThumbnail(file.getAbsolutePath(), MediaStore.Video.Thumbnails.FULL_SCREEN_KIND);
-            int width = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 52, getContext().getResources().getDisplayMetrics());
-            int height = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 52, getContext().getResources().getDisplayMetrics());
-            bitmap = ThumbnailUtils.extractThumbnail(bitmap, width, height, ThumbnailUtils.OPTIONS_RECYCLE_INPUT);
-            RoundedBitmapDrawable bdrawable = RoundedBitmapDrawableFactory.create(getContext().getResources(), bitmap);
-            bdrawable.setCircular(true);
-            Drawable whiteOutline = ResourcesCompat.getDrawable(getResources(), R.drawable.rounded_corners, null);
-            Drawable ripple = ResourcesCompat.getDrawable(getResources(), R.drawable.ripple_button_curved, null);
-            btnGallery.setBackground(whiteOutline);
-            btnGallery.setForeground(ripple);
-            btnGallery.setImageDrawable(bdrawable);
+        if (getGalleryDrawable() != null) {
+            Bitmap bitmap;
+            bitmap = ThumbnailUtils.createVideoThumbnail(file.getAbsolutePath(), MediaStore.Video.Thumbnails.FULL_SCREEN_KIND);
+            if (bitmap != null) {
+                int width = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 52, getContext().getResources().getDisplayMetrics());
+                int height = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 52, getContext().getResources().getDisplayMetrics());
+                bitmap = ThumbnailUtils.extractThumbnail(bitmap, width, height, ThumbnailUtils.OPTIONS_RECYCLE_INPUT);
+                RoundedBitmapDrawable bdrawable = RoundedBitmapDrawableFactory.create(getContext().getResources(), bitmap);
+                bdrawable.setCircular(true);
+                Drawable whiteOutline = ResourcesCompat.getDrawable(getResources(), R.drawable.rounded_corners, null);
+                Drawable ripple = ResourcesCompat.getDrawable(getResources(), R.drawable.ripple_button_curved, null);
+                btnGallery.setBackground(whiteOutline);
+                btnGallery.setForeground(ripple);
+                btnGallery.setImageDrawable(bdrawable);
+            }
         }
 
         btnGallery.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if ( videoURI != null ) {
+                if (videoURI != null) {
                     Intent intent = ShareCompat.IntentBuilder.from(getActivity())
                             .setStream(videoURI)
                             .setType("text/html")
@@ -400,36 +374,6 @@ public class HomeFragment extends Fragment {
                 }
             }
         });
-
-        // LOCATION
-        if ( setupLocation() ) {
-            fusedLocationClient = LocationServices.getFusedLocationProviderClient(getActivity());
-            fusedLocationClient.getLastLocation().addOnSuccessListener(getActivity(), new OnSuccessListener<Location>() {
-                @Override
-                public void onSuccess(Location location) {
-                    if (location != null) {
-                        Geocoder geocoder = new Geocoder(getActivity(), Locale.getDefault());
-                        try {
-                            List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
-                            String newLatitude = Double.toString(addresses.get(0).getLatitude());
-                            String newLongitude = Double.toString(addresses.get(0).getLongitude());
-                            String oldLatitude = getPreference(LATITUDE);
-                            String oldLongitude = getPreference(LONGITUDE);
-                            if (!newLatitude.equals(oldLatitude)) {
-                                updatePreference(LATITUDE, newLatitude);
-                            }
-                            if (!newLongitude.equals(oldLongitude)) {
-                                updatePreference(LONGITUDE, newLongitude);
-                            }
-                        } catch (IOException exception) {
-                            exception.printStackTrace();
-                        }
-                    }
-                }
-            });
-        }
-
-        setGridLines(getBoolPreference(GRIDLINES));
 
         btnFlip = root.findViewById(R.id.btnFlip);
         btnFlip.setOnClickListener(new View.OnClickListener() {
@@ -446,13 +390,7 @@ public class HomeFragment extends Fragment {
                 }
                 try {
                     startCamera();
-                } catch (ExecutionException e) {
-                    e.printStackTrace();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } catch (CameraAccessException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
+                } catch (ExecutionException | InterruptedException | CameraAccessException | IOException e) {
                     e.printStackTrace();
                 }
             }
@@ -471,9 +409,8 @@ public class HomeFragment extends Fragment {
                                 turnOffBluetoothCall();
                                 startStopObject = null;
                                 getContext().getContentResolver().unregisterContentObserver(settingsContentObserver);
-                                settingsContentObserver.remove();
                                 settingsContentObserver = null;
-                            } catch (NullPointerException npe ) { }
+                            } catch (NullPointerException ignored) { }
                             hudTimer.setVisibility(View.INVISIBLE);
                             btnPrep.setBackground(getResources().getDrawable(R.drawable.arming_button));
                             btnPressState = 0;
@@ -493,7 +430,7 @@ public class HomeFragment extends Fragment {
                                 break;
                             }
                             if (bluetoothAdapter.isEnabled() && deviceConnected != null) {
-                                if(!mAudioManager.isMusicActive()) {
+                                if (!mAudioManager.isMusicActive()) {
                                     Toast.makeText(getContext(), "Please make sure a music service is active", Toast.LENGTH_SHORT).show();
                                 }
                             }
@@ -538,22 +475,31 @@ public class HomeFragment extends Fragment {
 
         try {
             startCamera();
-        } catch (ExecutionException e) {
+        } catch (ExecutionException | IOException | InterruptedException | CameraAccessException e) {
             e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        } catch (IOException exception) {
-            exception.printStackTrace();
         }
 
-        // next part to check properly
+//        Display display = getActivity().getWindowManager().getDefaultDisplay();
+//        Point size = new Point();
+//        display.getSize(size);
+//        int difference = size.y - (int) (size.x * 16 / 9);
 
-        mExecutorService = new Executor() {
-            @Override
-            public void execute(Runnable command) { }
-        };
+//        ConstraintLayout.LayoutParams layoutParamsPrep = (ConstraintLayout.LayoutParams) btnPrep.getLayoutParams();
+//        layoutParamsPrep.setMargins(
+//                ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).leftMargin,
+//                ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).topMargin,
+//                ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).rightMargin,
+//                difference + 60);
+//        btnPrep.setLayoutParams(layoutParamsPrep);
+//
+//
+//        ConstraintLayout.LayoutParams layoutParamsGallery = (ConstraintLayout.LayoutParams) btnGallery.getLayoutParams();
+//        layoutParamsGallery.setMargins(
+//                ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).leftMargin,
+//                ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).topMargin,
+//                ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).rightMargin,
+//                difference + 84);
+//        btnGallery.setLayoutParams(layoutParamsGallery);
 
     }
 
@@ -563,15 +509,31 @@ public class HomeFragment extends Fragment {
             Point size = new Point();
             display.getSize(size);
             int width = size.x;
-
             int height = size.y;
-            String result = getPreference(CAMERA_ASPECT_RATIO);
-            if ( result.equals("4:3")) {
-                height = (int) (size.x * 4/3);
-            } else if ( result.equals("16:9")) {
-                height = (int) (size.x * 16/9);
-            }
 
+//            int difference = size.y - (int) (size.x * 16 / 9);
+
+//            ConstraintLayout.LayoutParams layoutParamsPrep = (ConstraintLayout.LayoutParams) btnPrep.getLayoutParams();
+//            layoutParamsPrep.setMargins(
+//                    ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).leftMargin,
+//                    ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).topMargin,
+//                    ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).rightMargin,
+//                    ((ConstraintLayout.LayoutParams) btnPrep.getLayoutParams()).bottomMargin+difference/2);
+//            btnPrep.setLayoutParams(layoutParamsPrep);
+//
+//            ConstraintLayout.LayoutParams layoutParamsGallery = (ConstraintLayout.LayoutParams) btnGallery.getLayoutParams();
+//            layoutParamsGallery.setMargins(
+//                    ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).leftMargin,
+//                    ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).topMargin,
+//                    ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).rightMargin,
+//                    ((ConstraintLayout.LayoutParams) btnGallery.getLayoutParams()).bottomMargin+difference/2);
+//            btnGallery.setLayoutParams(layoutParamsGallery);
+
+            if (viewPort.getAspectRatio().equals(new Rational(4,3))) {
+                height = (int) (size.x * 4 / 3);
+            } else if (viewPort.getAspectRatio().equals(new Rational(9,16))) {
+                height = (int) (size.x * 16 / 9);
+            }
             gridOutline = new GridOutline(getContext(), width, height);
             constraintLayout.addView(gridOutline);
         } else {
@@ -584,9 +546,10 @@ public class HomeFragment extends Fragment {
         min = 0;
         recordingTimeStamp.setVisibility(View.VISIBLE);
         recordingTimeStamp.setText(String.format("%02d", min) + ":" + String.format("%02d", sec));
-        recordingTextViewTimer = new Timer();
-        recordingTextViewTimer.purge();
-        recordingTextViewTimer.scheduleAtFixedRate(new TimerTask() {
+        if (recordingTextViewHandler == null) {
+            recordingTextViewHandler = new Handler();
+        }
+        recordingTextViewRunnable = new Runnable() {
             @Override
             public void run() {
                 sec++;
@@ -594,14 +557,11 @@ public class HomeFragment extends Fragment {
                     min++;
                     sec = 0;
                 }
-                getActivity().runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        recordingTimeStamp.setText(String.format("%02d", min) + ":" + String.format("%02d", sec));
-                    }
-                });
+                recordingTimeStamp.setText(String.format("%02d", min) + ":" + String.format("%02d", sec));
+                recordingTextViewHandler.postDelayed(this, 1000);
             }
-        }, 0, 1000);
+        };
+        recordingTextViewHandler.postDelayed(recordingTextViewRunnable, 1000);
     }
 
     public void startBluetoothChecks() {
@@ -609,7 +569,7 @@ public class HomeFragment extends Fragment {
         if (bluetoothAdapter == null) {
             Toast.makeText(getContext(), "Bluetooth not available on this device", Toast.LENGTH_SHORT).show();
         } else {
-            if (bluetoothAdapter.isEnabled() ) {
+            if (bluetoothAdapter.isEnabled()) {
                 bluetoothText.setText("Not Connected");
                 bluetoothOn();
             } else {
@@ -647,7 +607,7 @@ public class HomeFragment extends Fragment {
             mAudioManager.stopBluetoothSco();
             mAudioManager.setMicrophoneMute(false);
             mAudioManager.setSpeakerphoneOn(false);
-        } catch (NullPointerException npe) { }
+        } catch (NullPointerException ignored) { }
     }
 
     public void removeSpeech() {
@@ -655,7 +615,7 @@ public class HomeFragment extends Fragment {
             speech.cancel();
             speech.stopListening();
             speech.destroy();
-        } catch (NullPointerException npe) { }
+        } catch (NullPointerException ignored) { }
         speech = null;
         recognizerIntent = null;
     }
@@ -666,7 +626,7 @@ public class HomeFragment extends Fragment {
         btnGallery.setVisibility(View.VISIBLE);
     }
 
-    // check this
+    // check this // used for speech recogniser
     public void implementListener() {
         if (speech == null) {
             createSpeechRecogniserListener();
@@ -674,11 +634,11 @@ public class HomeFragment extends Fragment {
 
         if (getPreference(SAVE_BTN).equals("volume up")) {
             int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-            if(mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == maxVolume) {
+            if (mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == maxVolume) {
                 mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume - 1, AudioManager.FLAG_SHOW_UI);
             }
         } else if (getPreference(SAVE_BTN).equals("volume down")) {
-            if(mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+            if (mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
                 mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 1, AudioManager.FLAG_SHOW_UI);
             }
         }
@@ -686,8 +646,10 @@ public class HomeFragment extends Fragment {
         startStopObject = new StartStopObject();
         startStopObject.setCustomObjectListener(new StartStopObject.StartStopListener() {
             boolean counter = false;
+
             @Override
             public void confirmedStart() { }
+
             @Override
             public void confirmedStop() {
                 if (isRecording) {
@@ -696,11 +658,11 @@ public class HomeFragment extends Fragment {
                             counter = true;
                             if (getPreference(SAVE_BTN).equals("volume up")) {
                                 int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                                if(mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == maxVolume) {
+                                if (mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == maxVolume) {
                                     mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume - 1, AudioManager.FLAG_SHOW_UI);
                                 }
                             } else if (getPreference(SAVE_BTN).equals("volume down")) {
-                                if(mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+                                if (mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
                                     mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 1, AudioManager.FLAG_SHOW_UI);
                                 }
                             }
@@ -728,7 +690,7 @@ public class HomeFragment extends Fragment {
             saveBtnInt = 1;
         }
 
-        if(getBoolPreference(START_BTN_PREF)) {
+        if (getBoolPreference(START_BTN_PREF)) {
             String startBtn = getPreference(START_BTN);
             if (startBtn.equals("volume down")) {
                 startBtnInt = 3;
@@ -742,7 +704,6 @@ public class HomeFragment extends Fragment {
         settingsContentObserver = new SettingsContentObserver(getContext(), new Handler(), originalVolume, startStopObject, getBoolPreference(START_BTN_PREF), startBtnInt, saveBtnInt);
         // not sure if this is going to bug out
         getContext().getContentResolver().registerContentObserver(android.provider.Settings.System.CONTENT_URI, true, settingsContentObserver);
-
         btnFlip.setVisibility(View.INVISIBLE);
         btnSettings.setVisibility(View.INVISIBLE);
         btnGallery.setVisibility(View.INVISIBLE);
@@ -753,7 +714,7 @@ public class HomeFragment extends Fragment {
             musicActiveOnStart = true;
         }
 
-        if ( bluetoothAdapter != null && bluetoothAdapter.isEnabled() && deviceConnected != null) {
+        if (bluetoothAdapter != null && bluetoothAdapter.isEnabled() && deviceConnected != null) {
             musicActiveOnStart = false;
             if (mAudioManager.isMusicActive()) {
                 musicActiveOnStart = true;
@@ -764,8 +725,7 @@ public class HomeFragment extends Fragment {
             mAudioManager.setMicrophoneMute(false);
             mAudioManager.setSpeakerphoneOn(false);
 
-            KeyEvent event = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE);
-            mAudioManager.dispatchMediaKeyEvent(event);
+            mAudioManager.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE));
 
         }
         speech.startListening(recognizerIntent);
@@ -777,11 +737,11 @@ public class HomeFragment extends Fragment {
         if (getBoolPreference(START_BTN_PREF)) {
             if (getPreference(START_BTN).equals("volume up")) {
                 int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                if(mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == maxVolume) {
+                if (mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == maxVolume) {
                     mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume - 1, AudioManager.FLAG_SHOW_UI);
                 }
             } else if (getPreference(START_BTN).equals("volume down")) {
-                if(mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+                if (mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
                     mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 1, AudioManager.FLAG_SHOW_UI);
                 }
             }
@@ -791,10 +751,11 @@ public class HomeFragment extends Fragment {
         startStopObject.setCustomObjectListener(new StartStopObject.StartStopListener() {
             @Override
             public void confirmedStart() {
-                if (bluetoothAdapter.isEnabled() && getBoolPreference(START_BTN_PREF) == true) {
+                if (bluetoothAdapter.isEnabled() && getBoolPreference(START_BTN_PREF)) {
                     handlerPrepStartVideo();
                 }
             }
+
             @Override
             public void confirmedStop() {
                 if (isRecording) {
@@ -815,7 +776,7 @@ public class HomeFragment extends Fragment {
         } else if (saveBtn.equals("play/pause")) {
             saveBtnInt = 1;
         }
-        if(getBoolPreference(START_BTN_PREF)) {
+        if (getBoolPreference(START_BTN_PREF)) {
             String startBtn = getPreference(START_BTN);
             if (startBtn.equals("volume down")) {
                 startBtnInt = 3;
@@ -827,7 +788,6 @@ public class HomeFragment extends Fragment {
         }
         settingsContentObserver = new SettingsContentObserver(getContext(), new Handler(), originalVolume, startStopObject, getBoolPreference(START_BTN_PREF), startBtnInt, saveBtnInt);
         getContext().getContentResolver().registerContentObserver(android.provider.Settings.System.CONTENT_URI, true, settingsContentObserver);
-
         btnFlip.setVisibility(View.INVISIBLE);
         btnSettings.setVisibility(View.INVISIBLE);
         btnGallery.setVisibility(View.INVISIBLE);
@@ -836,7 +796,7 @@ public class HomeFragment extends Fragment {
             musicActiveOnStart = true;
         }
 
-        if ( bluetoothAdapter != null ) {
+        if (bluetoothAdapter != null) {
             if (bluetoothAdapter.isEnabled()) {
                 musicActiveOnStart = false;
                 if (mAudioManager.isMusicActive()) {
@@ -849,8 +809,7 @@ public class HomeFragment extends Fragment {
                     mAudioManager.setMicrophoneMute(false);
                     mAudioManager.setSpeakerphoneOn(false);
 
-                    KeyEvent event = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY);
-                    mAudioManager.dispatchMediaKeyEvent(event);
+                    mAudioManager.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
                 } else {
                     mAudioManager.setMode(AudioManager.MODE_NORMAL);
                 }
@@ -863,14 +822,17 @@ public class HomeFragment extends Fragment {
     public void bluetoothOff() {
         try {
             bluetoothAdapter.closeProfileProxy(BluetoothProfile.HEADSET, btHeadset);
-        } catch (NullPointerException | IllegalArgumentException exception) { }
+        } catch (NullPointerException | IllegalArgumentException ignored) {
+        }
         try {
             getContext().unregisterReceiver(btOnOffReceiver);
-        } catch (NullPointerException | IllegalArgumentException exception) { }
+        } catch (NullPointerException | IllegalArgumentException ignored) {
+        }
 
         try {
             getContext().unregisterReceiver(broadcastReceiver);
-        } catch (NullPointerException | IllegalArgumentException exception) { }
+        } catch (NullPointerException | IllegalArgumentException ignored) {
+        }
         btHeadset = null;
         bluetoothAdapter = null;
         mProfileListener = null;
@@ -885,8 +847,7 @@ public class HomeFragment extends Fragment {
                 if (profile == BluetoothProfile.HEADSET) {
                     btHeadset = (BluetoothHeadset) proxy;
 
-                    if (getActivity().checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_DENIED)
-                    {
+                    if (getActivity().checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_DENIED) {
                         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.R) // asks for android 12
                         {
                             ActivityCompat.requestPermissions(getActivity(), new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 2);
@@ -900,6 +861,7 @@ public class HomeFragment extends Fragment {
                     }
                 }
             }
+
             public void onServiceDisconnected(int profile) {
                 if (profile == BluetoothProfile.A2DP) {
                     btHeadset = null;
@@ -919,7 +881,7 @@ public class HomeFragment extends Fragment {
                     deviceConnected = device;
                     bluetoothText.setText("Connected " + deviceConnected.getName());
                 } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
-                    if ( btHeadset.getConnectedDevices().size() > 0 ) {
+                    if (btHeadset.getConnectedDevices().size() > 0) {
                         deviceConnected = btHeadset.getConnectedDevices().get(0);
                         bluetoothText.setText("Connected " + deviceConnected.getName());
                     } else {
@@ -937,10 +899,12 @@ public class HomeFragment extends Fragment {
     public void tempBluetoothOff() {
         try {
             bluetoothAdapter.closeProfileProxy(BluetoothProfile.HEADSET, btHeadset);
-        } catch (NullPointerException | IllegalArgumentException exception) { }
+        } catch (NullPointerException | IllegalArgumentException ignored) {
+        }
         try {
             getContext().unregisterReceiver(broadcastReceiver);
-        } catch (NullPointerException | IllegalArgumentException exception) { }
+        } catch (NullPointerException | IllegalArgumentException ignored) {
+        }
         btHeadset = null;
         deviceConnected = null;
     }
@@ -960,18 +924,16 @@ public class HomeFragment extends Fragment {
         btnPrep.setBackground(getResources().getDrawable(R.drawable.recording_button));
         btnPressState = 2;
 
-        File file = new File(sharedPreferences.getString(FILE_LOCATION, ""), System.currentTimeMillis() + ".mp4");
+        String date = (new SimpleDateFormat("yyyyMMdd_HHmmSS", Locale.US)).format(System.currentTimeMillis());
+        File file = new File(sharedPreferences.getString(FILE_LOCATION, ""), date + ".mp4");
+        FileOutputOptions fileOutputOptions = new FileOutputOptions.Builder(file).build();
 
-        VideoCapture.OutputFileOptions videoFileOptions = new VideoCapture.OutputFileOptions.Builder(file).build();
-        if ( setupLocation() ) {
-            Location location = new Location("0");
-            location.setLatitude(Double.parseDouble(getPreference(LATITUDE)));
-            location.setLongitude(Double.parseDouble(getPreference(LONGITUDE)));
-            metadata = new VideoCapture.Metadata();
-            metadata.location = location;
-            videoFileOptions = new VideoCapture.OutputFileOptions.Builder(file)
-                    .setMetadata(metadata)
-                    .build();
+        pendingRecording = videoCapture
+                .getOutput()
+                .prepareRecording(getContext(), fileOutputOptions);
+
+        if (PermissionChecker.checkSelfPermission(getContext(), "android.permission.RECORD_AUDIO") == PermissionChecker.PERMISSION_GRANTED) {
+            pendingRecording.withAudioEnabled();
         }
 
         String timerPreference = getPreference(TIMER);
@@ -981,136 +943,138 @@ public class HomeFragment extends Fragment {
         }
         timerPreferenceInt = 0;
         if (timerOn) {
-            if (timerPreference.equals("1 second")) {
-                timerPreferenceInt = 1;
-            } else if (timerPreference.equals("3 seconds")) {
-                timerPreferenceInt = 3;
-            } else if (timerPreference.equals("5 seconds")) {
-                timerPreferenceInt = 5;
-            } else if (timerPreference.equals("10 seconds")) {
-                timerPreferenceInt = 10;
-            } else if (timerPreference.equals("15 seconds")) {
-                timerPreferenceInt = 15;
-            } else if (timerPreference.equals("20 seconds")) {
-                timerPreferenceInt = 20;
-            } else if (timerPreference.equals("30 seconds")) {
-                timerPreferenceInt = 30;
+            switch (timerPreference) {
+                case "1 second":
+                    timerPreferenceInt = 1;
+                    break;
+                case "3 seconds":
+                    timerPreferenceInt = 3;
+                    break;
+                case "5 seconds":
+                    timerPreferenceInt = 5;
+                    break;
+                case "10 seconds":
+                    timerPreferenceInt = 10;
+                    break;
+                case "15 seconds":
+                    timerPreferenceInt = 15;
+                    break;
+                case "20 seconds":
+                    timerPreferenceInt = 20;
+                    break;
+                case "30 seconds":
+                    timerPreferenceInt = 30;
+                    break;
             }
-            textToSpeech.speak(String.valueOf(timerPreferenceInt), TextToSpeech.QUEUE_FLUSH, null, null);
-            recordingTextViewTimer = new Timer();
-            recordingTextViewTimer.purge();
-            VideoCapture.OutputFileOptions finalVideoFileOptions = videoFileOptions; // created as a temp
             hudTimer.setVisibility(View.VISIBLE);
             hudTimer.setText(String.valueOf(timerPreferenceInt));
-            recordingTextViewTimer.scheduleAtFixedRate(new TimerTask() {
+
+            recordingTextViewHandler = new Handler();
+            runnable = new Runnable() {
                 @Override
                 public void run() {
-                getActivity().runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        textToSpeech.speak(String.valueOf(timerPreferenceInt), TextToSpeech.QUEUE_FLUSH, null, null);
-                        hudTimer.setText(String.valueOf(timerPreferenceInt));
+                    textToSpeech.speak(String.valueOf(timerPreferenceInt), TextToSpeech.QUEUE_FLUSH, null, null);
+                    hudTimer.setText(String.valueOf(timerPreferenceInt));
+                    if (timerPreferenceInt <= 0) {
+                        hudTimer.setVisibility(View.INVISIBLE);
+                        handlerStartVideo(file);
+                        recordingTextViewHandler.removeCallbacks(this);
+                    } else {
+                        timerPreferenceInt--;
+                        recordingTextViewHandler.postDelayed(this, 1000);
                     }
-                });
-                timerPreferenceInt--;
-                if (timerPreferenceInt <= 0 && !textToSpeech.isSpeaking()) {
-                    recordingTextViewTimer.cancel();
-                    hudTimer.setVisibility(View.INVISIBLE);
-                    getActivity().runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            handlerStartVideo(finalVideoFileOptions, file);
-                        }
-                    });
                 }
-                }
-            }, 1000, 1000);
+            };
+            recordingTextViewHandler.postDelayed(runnable, 0);
+
         } else {
-            handlerStartVideo(videoFileOptions, file);
+            handlerStartVideo(file);
         }
     }
 
-    public void handlerStartVideo(VideoCapture.OutputFileOptions videoFileOptions, File file) {
+    public void handlerStartVideo(File file) {
 
-        textToSpeech.speak("Recording", TextToSpeech.QUEUE_FLUSH, null, null);
         updateTimeStamp();
 
-        videoCapture.startRecording(videoFileOptions, CameraXExecutors.mainThreadExecutor(), new VideoCapture.OnVideoSavedCallback() {
-            @Override
-            public void onVideoSaved(@NonNull @NotNull VideoCapture.OutputFileResults outputFileResults) {
-                textToSpeech.speak("Saved", TextToSpeech.QUEUE_FLUSH, null, null);
-                getActivity().runOnUiThread(new Runnable() {
-                    public void run() {
-                        Toast.makeText(getActivity().getApplicationContext(), "Video Saved Successfully", Toast.LENGTH_LONG).show();
-                    }
-                });
+        settingsContentObserver.setStart(true);
 
-                getActivity().sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)));
-                updateGalleryDrawable();
-                videoURI = FileProvider.getUriForFile(getContext(), getContext().getPackageName(), getGalleryDrawable());
-
-            }
-            @Override
-            public void onError(int videoCaptureError, @NonNull @NotNull String message, @Nullable @org.jetbrains.annotations.Nullable Throwable cause) {
-                textToSpeech.speak("Save Failed", TextToSpeech.QUEUE_FLUSH, null, null);
-                getActivity().runOnUiThread(new Runnable() {
-                    public void run() {
-                        Toast.makeText(getContext(), "Video Save Failed" + message, Toast.LENGTH_SHORT).show();
-
-                        btnPrep.setBackground(getResources().getDrawable(R.drawable.arming_button));
-                        btnPressState = 0;
-                        constraintLayout.removeView(circleOutline);
-                        recordingTextViewTimer.cancel();
-                        recordingTextViewTimer.purge();
-                        startStopObject = null;
+        recording = pendingRecording.start(ContextCompat.getMainExecutor(getContext()), recordEvent -> {
+            if (recordEvent instanceof VideoRecordEvent.Start) {
+//                new Thread(() -> textToSpeech.speak("Recording", TextToSpeech.QUEUE_ADD, null, null)).start();
+                Toast.makeText(getContext(), "Recording Started Successfully", Toast.LENGTH_SHORT).show();
+            } else if (recordEvent instanceof VideoRecordEvent.Finalize) {
+                if (!((VideoRecordEvent.Finalize)recordEvent).hasError()) {
+//                    OutputResults outputResults = ((VideoRecordEvent.Finalize)recordEvent).getOutputResults();
+                    textToSpeech.speak("Saved", TextToSpeech.QUEUE_FLUSH, null, null);
+                    Toast.makeText(getActivity().getApplicationContext(), "Video Saved Successfully", Toast.LENGTH_LONG).show();
+                    getActivity().sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)));
+                    updateGalleryDrawable();
+                    videoURI = FileProvider.getUriForFile(getContext(), getContext().getPackageName(), getGalleryDrawable());
+                } else {
+                    textToSpeech.speak("Save Failed", TextToSpeech.QUEUE_FLUSH, null, null);
+                    Toast.makeText(getContext(), "Recording Save Failed", Toast.LENGTH_SHORT).show();
+                    btnPrep.setBackground(getResources().getDrawable(R.drawable.arming_button));
+                    btnPressState = 0;
+                    constraintLayout.removeView(circleOutline);
+                    recordingTextViewHandler.removeCallbacks(recordingTextViewRunnable);
+                    startStopObject = null;
+                    try {
                         getContext().getContentResolver().unregisterContentObserver(settingsContentObserver);
-                        settingsContentObserver.remove();
-                        settingsContentObserver = null;
-                        recordingTimeStamp.setVisibility(View.INVISIBLE);
-                        showAppIcons();
-                        if (getBoolPreference(RE_ARM)) {
-                            reArm();
-                        }
-
+                    } catch (NullPointerException ignored ) {}
+                    settingsContentObserver = null;
+                    recordingTimeStamp.setVisibility(View.INVISIBLE);
+                    if (lblSpeechRecognitionOnOff) {
+                        lblRecognisedText.setText("");
+                        lblRecognisedText.setVisibility(View.INVISIBLE);
                     }
-                });
-            }
-        });
-        getActivity().runOnUiThread(new Runnable() {
-            public void run() {
-                Toast.makeText(HomeFragment.this.getContext(), "Video Started Successfully", Toast.LENGTH_SHORT).show();
+                    showAppIcons();
+                    if (getBoolPreference(RE_ARM)) {
+                        reArm();
+                    }
+                }
             }
         });
 
         isRecording = true;
 
-        // need to have music playing otherwise wont be able to receive commands
+//        // need to have music playing otherwise wont be able to receive commands
         if ( musicActiveOnStart && !getBoolPreference(START_BTN_PREF) ) {
             KeyEvent event = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY);
             mAudioManager.dispatchMediaKeyEvent(event);
         }
-
     }
 
-    public void handlerStopVideo() {
-        videoCapture.stopRecording();
+    public void handlerStopVideo () {
+        try {
+            recording.stop();
+        } catch (NullPointerException ignored) { }
+        try {
+            recordingTextViewHandler.removeCallbacks(runnable);
+        } catch (NullPointerException ignored) { }
         btnPrep.setBackground(getResources().getDrawable(R.drawable.arming_button));
         btnPressState = 0;
         constraintLayout.removeView(circleOutline);
-        recordingTextViewTimer.cancel();
-        recordingTextViewTimer.purge();
+        recordingTextViewHandler.removeCallbacks(recordingTextViewRunnable);
         startStopObject = null;
-        getContext().getContentResolver().unregisterContentObserver(settingsContentObserver);
-        settingsContentObserver.remove();
+        try {
+            getContext().getContentResolver().unregisterContentObserver(settingsContentObserver);
+        } catch (NullPointerException ignored) { }
         settingsContentObserver = null;
         recordingTimeStamp.setVisibility(View.INVISIBLE);
+        if (lblSpeechRecognitionOnOff) {
+            lblRecognisedText.setText("");
+            lblRecognisedText.setVisibility(View.INVISIBLE);
+        }
         showAppIcons();
         if (getBoolPreference(RE_ARM)) {
             reArm();
         }
     }
 
-    public void reArm() {
+    public void reArm () {
+        if (musicActiveOnStart) {
+            mAudioManager.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
+        }
         if (!bluetoothAdapter.isEnabled()) {
             implementListener();
             btnPrep.setBackground(getResources().getDrawable(R.drawable.listening_button));
@@ -1124,54 +1088,71 @@ public class HomeFragment extends Fragment {
         btnPressState++;
     }
 
-    public void createSpeechRecogniserListener() {
+    public void createSpeechRecogniserListener () {
         speech = SpeechRecognizer.createSpeechRecognizer(getContext());
         recognizerIntent = new Intent(RecognizerIntent.ACTION_VOICE_SEARCH_HANDS_FREE);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault());
         speech.setRecognitionListener(new RecognitionListener() {
             @Override
-            public void onBeginningOfSpeech() { }
+            public void onBeginningOfSpeech() {
+            }
+
             @Override
-            public void onBufferReceived(byte[] buffer) { }
+            public void onBufferReceived(byte[] buffer) {
+            }
+
             @Override
-            public void onEndOfSpeech() { }
+            public void onEndOfSpeech() {
+            }
+
             @Override
             public void onError(int errorCode) {
-                lblRecognisedText.setText("'-failed to recognise");
-                if ( errorCode == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ) {
+                if (lblSpeechRecognitionOnOff) {
+                    lblRecognisedText.setText("-failed to recognise");
+                }
+                if (errorCode == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                     speech.cancel();
                 } else { }
                 speech.cancel();
                 speech.startListening(recognizerIntent);
             }
+
             @Override
-            public void onEvent(int arg0, Bundle arg1) { }
+            public void onEvent(int arg0, Bundle arg1) {
+            }
+
             @Override
-            public void onReadyForSpeech(Bundle arg0) { }
+            public void onReadyForSpeech(Bundle arg0) {
+            }
+
             @Override
-            public void onRmsChanged(float rmsdB) { }
+            public void onRmsChanged(float rmsdB) {
+            }
+
             @Override
             public void onPartialResults(Bundle partialResults) {
                 ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if ( lblSpeechRecognitionOnOff ) {
+                if (lblSpeechRecognitionOnOff) {
                     lblRecognisedText.setText("");
                     lblRecognisedText.setText(matches.get(0));
                 }
                 boolean test = computeMetaphone(matches.get(0));
-                if ( test ) {
+                if (test) {
                     handlerPrepStartVideo();
+                    settingsContentObserver.setStart(true);
                 }
             }
+
             @Override
             public void onResults(Bundle results) {
                 ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if ( lblSpeechRecognitionOnOff ) {
+                if (lblSpeechRecognitionOnOff) {
                     lblRecognisedText.setText("");
                     lblRecognisedText.setText(matches.get(0));
                 }
                 boolean test = computeMetaphone(matches.get(0));
-                if ( !test ) {
+                if (!test) {
                     speech.startListening(recognizerIntent);
                 } else {
                     handlerPrepStartVideo();
@@ -1181,7 +1162,7 @@ public class HomeFragment extends Fragment {
         });
     }
 
-    public boolean computeMetaphone(String result) {
+    public boolean computeMetaphone (String result){
         String requiredString = getActivity().getSharedPreferences(PREFERENCE_FILE_NAME,
                 Context.MODE_PRIVATE).getString(START_RECORDING, new String());
         String testString = result;
@@ -1190,7 +1171,7 @@ public class HomeFragment extends Fragment {
         if (dMetaphone.isDoubleMetaphoneEqual(requiredString, testString)) {
             return true;
         }
-        if ( !requiredString.contains(" ") ) {
+        if (!requiredString.contains(" ")) {
             String dmValueRequiredString = dMetaphone.doubleMetaphone(requiredString);
             Set<String> dmArrayListTestString = new LinkedHashSet<>();
             String testStringSplit[] = testString.split(" ");
@@ -1228,7 +1209,7 @@ public class HomeFragment extends Fragment {
             }
             // need to use set so we can remove duplicates of metaphone words
             dmArrayListTestString = new LinkedHashSet<>(dmArrayListTestString);
-            for ( String newTestWord : dmArrayListTestString ) {
+            for (String newTestWord : dmArrayListTestString) {
                 for (String newRequiredWord : dmArrayListRequiredString) {
                     int compDiff = computeDifference(newRequiredWord, newTestWord);
                     int biggerLengthString = newRequiredWord.length();
@@ -1237,7 +1218,7 @@ public class HomeFragment extends Fragment {
                     }
                     float percentageCorrect = (float) compDiff / (float) biggerLengthString;
                     if (percentageCorrect < 0.25) {
-                        if ( countedCorrectWords == requiredCorrectWords ) {
+                        if (countedCorrectWords == requiredCorrectWords) {
                             return true;
                         } else {
                             countedCorrectWords++;
@@ -1245,24 +1226,22 @@ public class HomeFragment extends Fragment {
                     }
                 }
             }
-            if ( requiredCorrectWords == countedCorrectWords ) {
+            if (requiredCorrectWords == countedCorrectWords) {
                 return true;
             }
         }
         return false;
     }
 
-    public int computeDifference(String x, String y) {
+    public int computeDifference (String x, String y){
         int[][] dp = new int[x.length() + 1][y.length() + 1];
         for (int i = 0; i <= x.length(); i++) {
             for (int j = 0; j <= y.length(); j++) {
                 if (i == 0) {
                     dp[i][j] = j;
-                }
-                else if (j == 0) {
+                } else if (j == 0) {
                     dp[i][j] = i;
-                }
-                else {
+                } else {
                     dp[i][j] = min(dp[i - 1][j - 1] +
                             costOfSubstitution(x.charAt(i - 1), y.charAt(j - 1)), dp[i - 1][j] + 1, dp[i][j - 1] + 1);
                 }
@@ -1271,104 +1250,110 @@ public class HomeFragment extends Fragment {
         return dp[x.length()][y.length()];
     }
 
-    public int costOfSubstitution(char a, char b) {
+    public int costOfSubstitution ( char a, char b){
         return a == b ? 0 : 1;
     }
 
-    public int min(int... numbers) {
+    public int min ( int...numbers){
         return Arrays.stream(numbers).min().orElse(Integer.MAX_VALUE);
     }
 
-    @SuppressLint("UnsafeExperimentalUsageError")
-    public void startCamera() throws ExecutionException, InterruptedException, CameraAccessException, IOException {
-
+    public void startCamera () throws ExecutionException, InterruptedException, CameraAccessException, IOException {
         try {
             cameraProvider.unbindAll();
-        } catch (NullPointerException npe ) { }
+        } catch (NullPointerException ignored) { }
 
-        cameraProviderFuture = ProcessCameraProvider.getInstance(getContext());
-        cameraProvider = cameraProviderFuture.get();
-
-        String aspectRatio = getPreference(CAMERA_ASPECT_RATIO);
-        int intAspectRatio = AspectRatio.RATIO_4_3;
-
-        if ( aspectRatio.equals("16:9")) {
-            intAspectRatio = AspectRatio.RATIO_16_9;
-            ConstraintLayout.LayoutParams layoutParams = (ConstraintLayout.LayoutParams) previewView.getLayoutParams();
-            layoutParams.dimensionRatio = "H,9:16";
-        }
-
-        preview = new Preview.Builder()
-//                .setTargetResolution(screen)
-                .setTargetAspectRatio(intAspectRatio)
-                .setCameraSelector(cameraSelector)
-                .build();
-
-        videoCapture = new VideoCapture.Builder()
-//                .setVideoFrameRate(30) // 30 //
-//                .setBitRate(8000000) // 8000000 // WORKS
-                .setIFrameInterval(1) // 1 //
-//                .setAudioBitRate(96000) // 64000 //
-                .setAudioSampleRate(8000) // 8000 // dont change it when using aspect_4_3 it breaks when its to high
-                .setAudioChannelCount(2) // 1 //
-                .setAudioRecordSource(MediaRecorder.AudioSource.MIC) // MediaRecorder.AudioSource.MIC //
-//                .setAudioMinBufferSize(2000) // 1024 // doesnt work
-//                .setMaxResolution(new Size(3840, 2160)) // new Size(1920, 1080)
-                .setSurfaceOccupancyPriority(3) // 3
-                .setTargetAspectRatio(intAspectRatio)
-                .setCameraSelector(cameraSelector) // this works
-                .setTargetRotation(((Activity) getContext()).getWindowManager().getDefaultDisplay().getRotation())
-                .build();
-
-        imageAnalysis = new ImageAnalysis.Builder()
-//                .setTargetResolution(screen)
-                .setTargetRotation(((Activity) getContext()).getWindowManager().getDefaultDisplay().getRotation())
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build();
-
-        imageAnalysis.setAnalyzer(mExecutorService, new ImageAnalysis.Analyzer() {
+        cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
+        cameraProviderFuture.addListener(new Runnable() {
             @Override
-            public void analyze(@NonNull ImageProxy image) {
-            }
-        });
+            public void run() {
+                cameraProvider = null;
+                try {
+                    cameraProvider = cameraProviderFuture.get();
+                    preview = new Preview.Builder()
+                            .setCameraSelector(cameraSelector)
+                            .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                            .build();
+                    // TODO check whether to move this line
+                    preview.setSurfaceProvider(binding.viewFinder.getSurfaceProvider());
 
-        OrientationEventListener orientationEventListener = new OrientationEventListener( getContext() ) {
-            @SuppressLint("UnsafeExperimentalUsageError")
-            @Override
-            public void onOrientationChanged(int orientation) {
-                int rotation;
-                if (orientation >= 45 && orientation < 135) {
-                    rotation = Surface.ROTATION_270;
-                } else if (orientation >= 135 && orientation < 225) {
-                    rotation = Surface.ROTATION_180;
-                } else if (orientation >= 225 && orientation < 315) {
-                    rotation = Surface.ROTATION_90;
-                } else {
-                    rotation = Surface.ROTATION_0;
-                }
-                videoCapture.setTargetRotation(rotation); // dont add preview
-                imageAnalysis.setTargetRotation(rotation);
-            }
-        };
-        orientationEventListener.enable();
+                    previewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
 
-        preview.setSurfaceProvider(binding.viewFinder.getSurfaceProvider());
-        try {
-            cameraProvider.unbindAll();
-            camera = cameraProvider.bindToLifecycle(this, cameraSelector, videoCapture, preview);
-        } catch (Exception exception) { }
+                    String resolution = getPreference(CAMERA_RESOLUTION);
+                    Quality quality;
+                    switch (resolution) {
+                        case "UHD 2160p":
+                            quality = Quality.UHD;
+                            break;
+                        case "FHD 1080p":
+                            quality = Quality.FHD;
+                            break;
+                        case "HD 720p":
+                            quality = Quality.HD;
+                            break;
+                        case "SD 480p":
+                            quality = Quality.SD;
+                            break;
+                        default:
+                            quality = Quality.HIGHEST;
+                            break;
+                    }
+
+                    Recorder recorder = new Recorder.Builder()
+                            .setQualitySelector(QualitySelector.from(quality, FallbackStrategy.lowerQualityOrHigherThan(quality)))
+                            .build();
+
+                    videoCapture = VideoCapture.withOutput(recorder);
+                    videoCapture.setTargetRotation(((Activity) getContext()).getWindowManager().getDefaultDisplay().getRotation());
+
+//                    viewPort = new ViewPort.Builder(new Rational(binding.viewFinder.getWidth(), binding.viewFinder.getHeight()), preview.getTargetRotation()).build();
+//                    viewPort = new ViewPort.Builder(previewView.getViewPort().getAspectRatio(), preview.getTargetRotation()).build();
+                    viewPort = new ViewPort.Builder(new Rational(9, 16), preview.getTargetRotation()).build();
+//                    viewPort = ((PreviewView)root.findViewById(R.id.viewFinder)).getViewPort();
+                    UseCaseGroup useCaseGroup = new UseCaseGroup.Builder()
+                            .setViewPort(viewPort)
+                            .addUseCase(preview)
+                            .addUseCase(videoCapture).build();
+
+                    cameraProvider.unbindAll();
+                        camera = cameraProvider.bindToLifecycle(HomeFragment.this, cameraSelector, useCaseGroup);
+//                    camera = cameraProvider.bindToLifecycle(HomeFragment.this, cameraSelector, preview, videoCapture);
+                    cameraControl = camera.getCameraControl();
+
+                    OrientationEventListener orientationEventListener = new OrientationEventListener(getContext()) {
+                        @Override
+                        public void onOrientationChanged(int orientation) {
+                            int rotation;
+                            if (orientation >= 45 && orientation < 135) {
+                                rotation = Surface.ROTATION_270;
+                            } else if (orientation >= 135 && orientation < 225) {
+                                rotation = Surface.ROTATION_180;
+                            } else if (orientation >= 225 && orientation < 315) {
+                                rotation = Surface.ROTATION_90;
+                            } else {
+                                rotation = Surface.ROTATION_0;
+                            }
+                            videoCapture.setTargetRotation(rotation);
+                        }
+                    };
+                    orientationEventListener.enable();
+
+                    setGridLines(getBoolPreference(GRIDLINES));
+
+                } catch (ExecutionException | InterruptedException ignored) { }
+            }
+        }, ContextCompat.getMainExecutor(getContext()));
 
         TextView textView = root.findViewById(R.id.zoomTextView);
         SeekBar zoomSlider = root.findViewById(R.id.zoomSeekbar);
         SeekBar exposureSlider = root.findViewById(R.id.exposureSeekbar);
-        cameraControl = camera.getCameraControl();
 
         ScaleGestureDetector.SimpleOnScaleGestureListener _simpleListener = new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override
             public boolean onScale(ScaleGestureDetector detector) {
                 float currentZoomRatio = camera.getCameraInfo().getZoomState().getValue().getZoomRatio();
                 float delta = detector.getScaleFactor();
-                cameraControl.setZoomRatio( currentZoomRatio * delta );
+                cameraControl.setZoomRatio(currentZoomRatio * delta);
                 zoomSlider.setVisibility(View.VISIBLE);
                 textView.setVisibility(View.VISIBLE);
                 zoomSlider.setProgress((int) (camera.getCameraInfo().getZoomState().getValue().getLinearZoom() * 100));
@@ -1378,7 +1363,7 @@ public class HomeFragment extends Fragment {
 
         ScaleGestureDetector mGestureDetector = new ScaleGestureDetector(getContext(), _simpleListener);
         root.findViewById(R.id.viewFinder).setOnTouchListener(new View.OnTouchListener() {
-            @SuppressLint("UnsafeExperimentalUsageError")
+            @SuppressLint("ClickableViewAccessibility")
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 mGestureDetector.onTouchEvent(event);
@@ -1401,10 +1386,10 @@ public class HomeFragment extends Fragment {
                             public void run() {
                                 try {
                                     FocusMeteringResult result = (FocusMeteringResult) future.get();
-                                } catch (Exception e) { }
+                                } catch (Exception ignored) { }
                             }
                         };
-                        future.addListener(listener, mExecutorService);
+                        future.addListener(listener, ContextCompat.getMainExecutor(getContext()));
                         try {
                             constraintLayout.removeView(circleOutline);
                             circleOutline = new CircleOutline(getContext(), event.getX(), event.getY(), 200);
@@ -1418,8 +1403,9 @@ public class HomeFragment extends Fragment {
                                             constraintLayout.removeView(circleOutline);
                                         }
                                     });
-                                }}, 3000);
-                        } catch (NullPointerException npe) { }
+                                }
+                            }, 3000);
+                        } catch (NullPointerException ignored) { }
                         return true;
                     case MotionEvent.ACTION_UP:
                         break;
@@ -1428,7 +1414,8 @@ public class HomeFragment extends Fragment {
                 exposureSlider.setProgress(50);
                 try {
                     exposureTimer.cancel();
-                } catch (NullPointerException npe) { }
+                } catch (NullPointerException ignored) {
+                }
                 return false;
             }
         });
@@ -1439,14 +1426,14 @@ public class HomeFragment extends Fragment {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 try {
                     exposureTimer.cancel();
-                } catch (NullPointerException npe) { }
+                } catch (NullPointerException ignored) { }
                 int min = camera.getCameraInfo().getExposureState().getExposureCompensationRange().getLower();
                 int max = camera.getCameraInfo().getExposureState().getExposureCompensationRange().getUpper();
-                if ( progress > 50 ) {
-                    int test = (int) (max * ((progress/100f + progress/100f) - 1));
+                if (progress > 50) {
+                    int test = (int) (max * ((progress / 100f + progress / 100f) - 1));
                     camera.getCameraControl().setExposureCompensationIndex(test);
-                } else if ( progress < 50 ) {
-                    int test = (int) (min * (((100f-progress)/100f) + ((100f-progress)/100f) - 1f ));
+                } else if (progress < 50) {
+                    int test = (int) (min * (((100f - progress) / 100f) + ((100f - progress) / 100f) - 1f));
                     camera.getCameraControl().setExposureCompensationIndex(test);
                 } else {
                     camera.getCameraControl().setExposureCompensationIndex(0);
@@ -1461,12 +1448,17 @@ public class HomeFragment extends Fragment {
                                 exposureTimer.cancel();
                             }
                         });
-                    }}, 3000);
+                    }
+                }, 3000);
             }
+
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) { }
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) { }
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
         });
 
         zoomSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -1474,8 +1466,8 @@ public class HomeFragment extends Fragment {
             public void onProgressChanged(SeekBar seekbar, int progress, boolean fromUser) {
                 try {
                     zoomTimer.cancel();
-                } catch (NullPointerException npe) { }
-                cameraControl.setLinearZoom( progress/100f );
+                } catch (NullPointerException ignored) { }
+                cameraControl.setLinearZoom(progress / 100f);
                 float currentZoom = camera.getCameraInfo().getZoomState().getValue().getZoomRatio();
                 String zoom = String.valueOf(currentZoom).substring(0, 3);
                 textView.setText(zoom + "x");
@@ -1497,28 +1489,14 @@ public class HomeFragment extends Fragment {
                                 zoomTimer.cancel();
                             }
                         });
-                    }}, 3000);
+                    }
+                }, 3000);
             }
             @Override
             public void onStartTrackingTouch(SeekBar seekbar) { }
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) { }
         });
-    }
-
-    public void updatePreference(String key, String preference) {
-        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(PREFERENCE_FILE_NAME, Context.MODE_PRIVATE);
-        sharedPreferences.edit().putString(key, preference).apply();
-    }
-
-    public void createSharedPreferenceList() {
-        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(PREFERENCE_FILE_NAME, Context.MODE_PRIVATE);
-        if (!sharedPreferences.contains(LONGITUDE) || !sharedPreferences.contains(LATITUDE)) {
-            SharedPreferences.Editor editor = sharedPreferences.edit();
-            editor.putString(LATITUDE, "0");
-            editor.putString(LONGITUDE, "0");
-            editor.commit();
-        }
     }
 
     public String getPreference(String key) {
@@ -1547,19 +1525,14 @@ public class HomeFragment extends Fragment {
     public void unRegisterReceivers() {
         try {
             getContext().getContentResolver().unregisterContentObserver(settingsContentObserver);
-            settingsContentObserver.remove();
             settingsContentObserver = null;
-        } catch (NullPointerException | IllegalArgumentException exception) { }
+        } catch (NullPointerException | IllegalArgumentException ignored) { }
     }
 
     public void removeTimers() {
         if ( removeCircleTimer != null ) {
             removeCircleTimer.purge();
             removeCircleTimer.cancel();
-        }
-        if ( recordingTextViewTimer != null ) {
-            recordingTextViewTimer.purge();
-            recordingTextViewTimer.cancel();
         }
         if ( zoomTimer != null ) {
             zoomTimer.purge();
@@ -1576,10 +1549,10 @@ public class HomeFragment extends Fragment {
         super.onPause();
         try {
             removeSpeech();
-        } catch ( NullPointerException npe ) { }
+        } catch ( NullPointerException ignored ) { }
         try {
             handlerStopVideo();
-        } catch ( NullPointerException npe ) { }
+        } catch ( NullPointerException ignored ) { }
         removeTimers();
         bluetoothOff();
         // check with bluetooth
@@ -1594,10 +1567,42 @@ public class HomeFragment extends Fragment {
         bluetoothOff();
         turnOffBluetoothCall();
         unRegisterReceivers();
+
+        try {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+        } catch (NullPointerException ignored) { }
+
         binding = null;
+
+//        try {
+//            cameraExecutor.shutdown();
+//        } catch (NullPointerException npe) { }
+
         //        cameraProvider.unbindAll();
         //        cameraProvider.shutdown();
-        //        executorService.shutdown();
+
+    }
+
+    @NonNull
+    @Override
+    public CameraXConfig getCameraXConfig() {
+        return CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())
+                .setMinimumLoggingLevel(Log.ERROR)
+                .build();
+    }
+
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            int result = textToSpeech.setLanguage(Locale.getDefault());
+            if (result == TextToSpeech.LANG_MISSING_DATA
+                    || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "This Language is not supported");
+            }
+        } else {
+            Log.e("TTS", "Initialization Failed!");
+        }
     }
 
 }

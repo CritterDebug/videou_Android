@@ -79,24 +79,24 @@ public class Troubleshooting extends Fragment {
 
         ArrayList<String> al = new ArrayList<>();
 
-        al.add("This is because the app doesn't register the button click but rather a change in volume");
+        al.add("This is because the app doesn't register a button click but rather a change in volume");
         al.add("If bt selected as a preference but no bt device connected it will automatically use voice activation instead");
         al.add("For it to be quick and accurate, try to keep the word distinct, eg. unicorn. " +
                 "Please avoid using voice recognition if listening for over 30 seconds, " +
                 "instead use the Bluetooth start button feature");
-        al.add("This is because the gallery only shows the last video in the folder not necessarily the newest item");
+        al.add("This is because the gallery only shows the last video in the folder not necessarily the newest item. It also only shows the video image if it can be successfully played");
         al.add("This is because the app is only able show folders in the DCIM or Pictures sub-directory. " +
                 "If your current folder is stored under gallery or something else, you will not be able to save videos there");
-        al.add("This means that you don't have to go back to your phone to re-record. It automatically re-arms the camera after a recording is finished");
+        al.add("In this case use the play pause button for starting and have the music active but not playing before arming");
 
         ArrayList<String> title = new ArrayList<>();
 
         title.add("(1/6) Why is using the volume up start button on max volume decreasing volume by one");
         title.add("(2/6) Why did it go back to voice recognition when preference was bt start btn");
         title.add("(3/6) Why is voice recognition taking so long");
-        title.add("(4/6) Gallery not showing newest item in folder");
+        title.add("(4/6) Gallery not showing newest item in folder or showing empty gallery when videos are in it");
         title.add("(5/6) Storage Location dropdown not showing all my folders");
-        title.add("(6/6) I want my music to start once I start the recording");
+        title.add("(6/6) I want my music to start once I start the recording and not before it");
 
         courseModelArrayList = new ArrayList<>();
 

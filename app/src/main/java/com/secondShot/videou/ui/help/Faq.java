@@ -75,16 +75,13 @@ public class Faq extends Fragment {
         ArrayList<String> al = new ArrayList<>();
 
         al.add("It will connect to any bluetooth headset that has a microphone and is of a headset profile");
-        al.add("Storing files in a designated location means tracking your historical progress more accurately, because when you move" +
-                "videos around later to a folder it recreates the time stamp to the current date/time. " +
-                "Please note that it will only access files in 'DCIM' or 'Pictures' folders, the folder 'Gallery' has been discontinued and as such the app can only read but not write to it.");
-        al.add("It will automatically choose the highest resolution supported up to 1080 x 1920 at roughly 24fps " +
-                "In the future this may be changed to enable user selection");
-        al.add("Is audible through the speak or bluetooth headset. " +
-                "Occasionally it may seem laggy, but it is still accurate and re-adjusts the remaining time");
+        al.add("Please note that it will only access files in 'DCIM' or 'Pictures' folders, the folder 'Gallery' has been discontinued in android and as such the app can only read but not write to it");
+        al.add("You can choose the highest resolution supported up to 2160 x 3840 at roughly 24 - 30fps for the rear camera. Support for front facing resolutions may come later");
+        al.add("Is audible through the speaker or bluetooth headset. Occasionally it may seem laggy, but it is still accurate and re-adjusts the remaining time. " +
+                "When using speech recognition with the timer, it may skip a few seconds while it changes audio routing");
+        al.add("This means that you don't have to go back to your phone to re-record. It automatically re-arms the camera after a recording is finished");
         al.add("If you are having trouble being voice recognised, try using this to see what the program is picking up ");
-        al.add("In this case use the play pause button for starting");
-        al.add("1.15");
+        al.add("1.16");
 
         ArrayList<String> title = new ArrayList<>();
 

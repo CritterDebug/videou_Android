@@ -12,15 +12,15 @@
         android:id="@+id/viewFinder"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintDimensionRatio="H,3:4"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.0" >
-
+        app:layout_constraintVertical_bias="0.0"
+        app:flow_horizontalBias="0.5"
+        app:layout_constraintDimensionRatio="W,16:9">
     </androidx.camera.view.PreviewView>
+
+    <!-- app:layout_constraintDimensionRatio="W,16:9" -->
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/constraintLayout"
@@ -69,7 +69,8 @@
             android:foreground="@drawable/ic_baseline_settings_24"
             android:foregroundGravity="center"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="SpeakableTextPresentCheck" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <FrameLayout
@@ -137,32 +138,32 @@
         android:layout_width="80dp"
         android:layout_height="80dp"
         android:layout_centerInParent="true"
-        android:layout_marginBottom="60dp"
+        android:layout_marginBottom="50dp"
         android:background="@drawable/arming_button"
         app:backgroundTint="@null"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toBottomOf="@id/viewFinder"
+        app:layout_constraintEnd_toEndOf="@id/viewFinder"
+        app:layout_constraintStart_toStartOf="@id/viewFinder"
         app:rippleColor="@color/black" />
 
     <ImageButton
         android:id="@+id/btnGallery"
         android:layout_width="56dp"
         android:layout_height="56dp"
-        android:layout_marginBottom="72dp"
+        android:layout_marginBottom="62dp"
         android:background="@drawable/empty_gallery"
         android:foreground="@drawable/ripple_button_curved"
         android:src="@drawable/ic_baseline_image_not_supported_24"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toBottomOf="@id/viewFinder"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/customButton" />
+        app:layout_constraintStart_toEndOf="@+id/customButton"
+        tools:ignore="SpeakableTextPresentCheck" />
 
     <TextView
         android:id="@+id/recordingTimeStamp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="86dp"
+        android:layout_marginBottom="74dp"
         android:background="@drawable/recording_time_stamp_button"
         android:paddingLeft="9dp"
         android:paddingTop="5dp"
@@ -174,7 +175,7 @@
         android:textStyle="bold"
         android:visibility="invisible"
         app:backgroundTint="@null"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toBottomOf="@id/viewFinder"
         app:layout_constraintEnd_toStartOf="@+id/customButton"
         app:layout_constraintStart_toStartOf="parent" />
 
